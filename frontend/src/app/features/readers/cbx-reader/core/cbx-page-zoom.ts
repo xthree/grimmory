@@ -348,7 +348,8 @@ export class CbxPageZoom {
   private ensureTargets(): void {
     if (this.targets.length > 0) return;
     const layer = this.getContainer()?.querySelector<HTMLElement>('.current-page-layer');
-    for (const child of Array.from(layer?.children ?? []) as HTMLElement[]) {
+    for (const child of Array.from(layer?.children ?? [])) {
+      if (!(child instanceof HTMLElement)) continue;
       const measured = child.tagName === 'APP-CANVAS-RENDERER'
         ? child.querySelector<HTMLElement>('canvas')
         : child.tagName === 'IMG' ? child : null;

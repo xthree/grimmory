@@ -1238,7 +1238,7 @@
   },
   "src/app/features/readers/cbx-reader/cbx-reader.component.ts": {
     "anti-slop/require-safety-comment-for-type-assertion": {
-      "count": 54
+      "count": 53
     },
     "typescript/no-floating-promises": {
       "count": 1
@@ -1250,7 +1250,7 @@
       "count": 15
     },
     "typescript/no-unnecessary-type-assertion": {
-      "count": 7
+      "count": 6
     },
     "typescript/no-unsafe-assignment": {
       "count": 2
@@ -1259,7 +1259,7 @@
       "count": 1
     },
     "typescript/prefer-readonly": {
-      "count": 34
+      "count": 33
     }
   },
   "src/app/features/readers/cbx-reader/core/cbx-page-dimension.service.ts": {
