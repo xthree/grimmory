@@ -46,6 +46,7 @@ import {computeCbxSpreads, findCbxSpreadForPage} from './core/cbx-spread.util';
 import {isPageTurnSwipe} from './core/cbx-swipe.util';
 import {CBX_DOUBLE_TAP_ZOOM, CBX_MIN_ZOOM, CbxPageZoom, Point, toPoint, wheelZoomFactor} from './core/cbx-page-zoom';
 import {isTouchScreen, setupReaderEdges} from '../shared/reader-edges.util';
+import {isPrimaryButtonHeld} from '../../../shared/util/pointer-gestures';
 
 const SERIES_SORT: readonly BookSortTerm[] = [{key: 'seriesNumber', direction: 'asc'}];
 
@@ -1977,13 +1978,17 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   @HostListener('document:mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (!this.isMouseDragging) return;
-    this.isMouseDragging = false;
-    this.pageZoom.endPan();
-    this.getImageScrollContainer()?.classList.remove('is-dragging');
+    this.endMouseDrag(true);
     if (this.pageZoom.panMoved) {
       this.suppressClicksUntil = performance.now() + CbxReaderComponent.DRAG_CLICK_SUPPRESS_MS;
       this.handleSwipeGesture(toPoint(event));
     }
+  }
+
+  private endMouseDrag(fling: boolean): void {
+    this.isMouseDragging = false;
+    this.pageZoom.endPan(fling);
+    this.getImageScrollContainer()?.classList.remove('is-dragging');
   }
 
   private startGesture(at: Point): void {
@@ -2009,7 +2014,10 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   @HostListener('document:mousemove', ['$event'])
   onMouseMove(event: MouseEvent): void {
     this.lastMouseEvent = event;
-    if (this.isMouseDragging) {
+    if (this.isMouseDragging && !isPrimaryButtonHeld(event)) {
+      // The button was released where we never saw mouseup (e.g. focus left the window): drop the drag quietly.
+      this.endMouseDrag(false);
+    } else if (this.isMouseDragging) {
       this.pageZoom.updatePan(toPoint(event));
     } else {
       this.refreshPanCursor();
