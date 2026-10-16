@@ -1,6 +1,9 @@
+@use '../shared/styles/reader-chrome' as *;
+
 // Pinch zoom for the strip layouts (--cbx-zoom, set from script; 1 when not zoomed).
 $cbx-zoom: var(--cbx-zoom, 1);
-$cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
+$cbx-infinite-fit-height: calc((100cqh - var(--page-gap)) * #{$cbx-zoom});
+$cbx-long-strip-fit-height: calc(100cqh * #{$cbx-zoom});
 
 @mixin cbx-reader-continuation-affordance {
   .cbx-continuation-spacer {
@@ -30,27 +33,25 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 }
 
 .comic-reader-container {
+  @include safe-area;
+
+  --reader-header-height: calc(38px + var(--safe-edge-top));
+  --reader-footer-height: calc(52px + var(--safe-edge-bottom));
+
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  width: 100vw;
+  position: fixed;
+  inset: 0;
   overflow: hidden;
   box-sizing: border-box;
   background: #1a1a1a;
   color: #fff;
-  position: relative;
   touch-action: none;
   overscroll-behavior: none;
   user-select: none;
 
   &:focus {
     outline: none;
-  }
-
-  &:fullscreen {
-    height: 100%;
-    width: 100%;
-    max-height: 100%;
   }
 
   .webtoon-suggestion-banner {
@@ -61,7 +62,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
     justify-content: space-between;
     gap: 0.6563rem 0.875rem;
     padding: 0.5687rem 0.875rem;
-    margin: 0 0.4375rem;
+    margin: var(--safe-edge-top) calc(0.4375rem + var(--safe-edge-right)) 0 calc(0.4375rem + var(--safe-edge-left));
     background: rgb(30 40 55 / 95%);
     border: 1px solid rgb(255 255 255 / 12%);
     border-radius: 8px;
@@ -133,7 +134,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
   // Slideshow progress bar
   .slideshow-progress {
     position: absolute;
-    bottom: 0;
+    bottom: var(--safe-edge-bottom);
     left: 0;
     height: 3px;
     background: #4a90e2;
@@ -143,7 +144,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
     transition: bottom 0.3s ease;
 
     &.above-footer {
-      bottom: 52px;
+      bottom: var(--reader-footer-height);
     }
   }
 
@@ -172,8 +173,8 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
   .bookmark-indicator {
     position: absolute;
-    top: 0;
-    right: 24px;
+    top: var(--safe-edge-top);
+    right: calc(24px + var(--safe-edge-right));
     z-index: 10;
     pointer-events: none;
     filter: drop-shadow(0 2px 4px rgb(0 0 0 / 30%));
@@ -184,14 +185,15 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
   }
 
   .image-container {
+    container-type: size;
     position: absolute;
     inset: 0;
     display: flex;
     justify-content: center;
     align-items: center;
     overflow: hidden;
-    padding: 0.4375rem;
-    background: #0f0f0f;
+    padding: calc(0.4375rem + var(--safe-edge-top)) calc(0.4375rem + var(--safe-edge-right))
+      calc(0.4375rem + var(--safe-edge-bottom)) calc(0.4375rem + var(--safe-edge-left));
     min-height: 0;
     touch-action: none; // touch scrolling and pinch are scripted (CbxPageZoom)
 
@@ -226,18 +228,6 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
     &.magnifier-active {
       cursor: none;
-    }
-
-    &.bg-black {
-      background: #000;
-    }
-
-    &.bg-gray {
-      background: #0f0f0f;
-    }
-
-    &.bg-white {
-      background: #fff;
     }
 
     &:not(.infinite-scroll) {
@@ -355,7 +345,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
         .page-image {
           width: auto;
-          height: calc(100dvh - 0.875rem);
+          height: 100cqh;
           max-width: none;
         }
 
@@ -375,7 +365,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
           .page-image {
             width: auto;
-            height: calc(100dvh - 0.875rem);
+            height: 100cqh;
             max-width: none;
           }
 
@@ -485,6 +475,8 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
     }
 
     &.infinite-scroll {
+      --page-gap: 0.875rem;
+
       overflow: hidden auto;
       align-items: flex-start;
       overscroll-behavior: contain;
@@ -493,10 +485,10 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
         display: flex;
         flex-direction: column;
         align-items: safe center;
-        gap: 0.875rem;
+        gap: var(--page-gap);
         width: 100%;
         min-width: 0;
-        padding: 0.875rem 0;
+        padding: var(--page-gap) 0;
         overflow-anchor: none;
       }
 
@@ -541,7 +533,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
         .page-image {
           width: auto;
-          height: $cbx-strip-fit-height;
+          height: $cbx-infinite-fit-height;
           max-width: 100%;
         }
       }
@@ -571,7 +563,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
         .page-image {
           max-width: 100%;
-          max-height: $cbx-strip-fit-height;
+          max-height: $cbx-infinite-fit-height;
           width: auto;
           height: auto;
         }
@@ -584,7 +576,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
         .page-image {
           max-width: 100%;
-          max-height: $cbx-strip-fit-height;
+          max-height: $cbx-infinite-fit-height;
           width: auto;
           height: auto;
         }
@@ -655,7 +647,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
         .long-strip-image {
           width: auto;
-          height: $cbx-strip-fit-height;
+          height: $cbx-long-strip-fit-height;
           max-width: 100%;
         }
       }
@@ -684,7 +676,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
         .long-strip-image {
           max-width: 100%;
-          max-height: $cbx-strip-fit-height;
+          max-height: $cbx-long-strip-fit-height;
           width: auto;
           height: auto;
         }
@@ -697,7 +689,7 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
 
         .long-strip-image {
           max-width: 100%;
-          max-height: $cbx-strip-fit-height;
+          max-height: $cbx-long-strip-fit-height;
           width: auto;
           height: auto;
         }
@@ -786,11 +778,13 @@ $cbx-strip-fit-height: calc((100vh - 1.75rem) * #{$cbx-zoom});
   }
 }
 
+.browser-bar {
+  @include browser-bar;
+}
+
 @media (width <=768px) {
   .comic-reader-container {
-    .slideshow-progress.above-footer {
-      bottom: 48px;
-    }
+    --reader-footer-height: calc(48px + var(--safe-edge-bottom));
 
     .image-container {
       top: 0;

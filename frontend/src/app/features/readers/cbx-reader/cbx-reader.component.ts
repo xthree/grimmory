@@ -1,11 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, untracked, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { QueryClient } from '@tanstack/angular-query-experimental';
 import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import { forkJoin, from, Subject } from 'rxjs';
 import { debounceTime, map, switchMap, tap } from 'rxjs/operators';
 import { PageTitleService } from "../../../shared/service/page-title.service";
 import { CbxReaderService } from '../../book/service/cbx-reader.service';
 import { BookService } from '../../book/service/book.service';
+import { BookQueryService } from '../../book/data/book-query.service';
+import { type BookSortTerm } from '../../book/data/book-query-params';
 import { CbxBackgroundColor, CbxFitMode, CbxMagnifierLensSize, CbxMagnifierZoom, CbxPageSpread, CbxPageSplitOption, CbxPageViewMode, CbxScrollMode, CbxReadingDirection, CbxSlideshowInterval, UserService } from '../../settings/user-management/user.service';
 import { CbxPageDimensionService } from './core/cbx-page-dimension.service';
 import { CbxPageDimension } from './models/cbx-page-dimension.model';
@@ -42,7 +45,9 @@ import {
 import {computeCbxSpreads, findCbxSpreadForPage} from './core/cbx-spread.util';
 import {isPageTurnSwipe} from './core/cbx-swipe.util';
 import {CBX_DOUBLE_TAP_ZOOM, CBX_MIN_ZOOM, CbxPageZoom, Point, toPoint, wheelZoomFactor} from './core/cbx-page-zoom';
+import {isTouchScreen, setupReaderEdges} from '../shared/reader-edges.util';
 
+const SERIES_SORT: readonly BookSortTerm[] = [{key: 'seriesNumber', direction: 'asc'}];
 
 @Component({
   selector: 'app-cbx-reader',
@@ -167,7 +172,6 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   // Magnifier
   isMagnifierActive = signal(false);
   private magnifierLensRef = viewChild<ElementRef<HTMLDivElement>>('magnifierLens');
-  private readerRootRef = viewChild<ElementRef<HTMLElement>>('readerRoot');
   private imageScrollHostRef = viewChild<ElementRef<HTMLElement>>('imageScrollHost');
   magnifierZoom = signal<CbxMagnifierZoom>(CbxMagnifierZoom.ZOOM_3X);
   magnifierLensSize = signal<CbxMagnifierLensSize>(CbxMagnifierLensSize.MEDIUM);
@@ -238,6 +242,8 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private cbxReaderService = inject(CbxReaderService);
   private bookService = inject(BookService);
+  private bookQuery = inject(BookQueryService);
+  private queryClient = inject(QueryClient);
   private userService = inject(UserService);
   private messageService = inject(MessageService);
   private readonly t = inject(TranslocoService);
@@ -267,6 +273,22 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   hasSeries = computed(() => !!this.currentBook()?.metadata?.seriesName);
 
   isFooterVisible = computed(() => this.footerService.forceVisible());
+
+  private static readonly PAGE_COLORS: Record<CbxBackgroundColor, string> = {
+    [CbxBackgroundColor.BLACK]: '#000',
+    [CbxBackgroundColor.GRAY]: '#0f0f0f',
+    [CbxBackgroundColor.WHITE]: '#fff',
+  };
+
+  pageColor = computed(() => CbxReaderComponent.PAGE_COLORS[this.backgroundColor()]);
+
+  stripColor = computed(() => this.brightness() < 100
+    ? `color-mix(in srgb, ${this.pageColor()} ${this.brightness()}%, black)`
+    : this.pageColor());
+
+  topBarColor = computed(() => this.headerService.forceVisible() ? 'var(--reader-chrome-bg)' : this.stripColor());
+
+  bottomBarColor = computed(() => this.isFooterVisible() ? 'var(--reader-chrome-bg)' : this.stripColor());
 
   showQuickSettings = computed(() => this.quickSettingsService.visible());
 
@@ -305,6 +327,8 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   }
 
   constructor() {
+    setupReaderEdges(this.stripColor);
+
     effect(() => {
       this.sidebarService.bookmarks();
       this.updateBookmarkState();
@@ -346,7 +370,7 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.visibilityManager = new ReaderHeaderFooterVisibilityManager(window.innerHeight);
+    this.visibilityManager = new ReaderHeaderFooterVisibilityManager(window.innerHeight, !isTouchScreen());
     this.visibilityManager.onStateChange((state) => {
       this.headerService.setForceVisible(state.headerVisible);
       this.footerService.setForceVisible(state.footerVisible);
@@ -432,8 +456,9 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
         // For now, keeping this.destroy$ as a Subject if it's still needed for sub-initializations, but I'll check sidebarService.
         this.sidebarService.initialize(this.bookId()!, book, this.altBookType());
 
-        if (book.metadata?.seriesName) {
-          this.loadSeriesNavigation(book);
+        const seriesName = book.metadata?.seriesName;
+        if (seriesName) {
+          this.loadSeriesNavigation(book, seriesName);
         }
 
         this.pages.set(pages);
@@ -1860,8 +1885,7 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
 
   @HostListener('document:fullscreenchange')
   onFullscreenChange(): void {
-    const target = this.readerRootRef()?.nativeElement ?? document.documentElement;
-    this.isFullscreen.set(document.fullscreenElement === target);
+    this.isFullscreen.set(!!document.fullscreenElement);
     this.headerService.updateState({ isFullscreen: this.isFullscreen(), isSlideshowActive: this.isSlideshowActive() });
   }
 
@@ -2079,28 +2103,22 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
     }
   }
 
-  private loadSeriesNavigation(book: Book): void {
-    this.bookService.getBooksInSeries(book.id)
+  private loadSeriesNavigation(book: Book, seriesName: string): void {
+    from(this.findSeriesNeighbours(book.id, seriesName))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-      next: (seriesBooks) => {
+      next: (neighbours) => {
         if (this.currentBook()?.id !== book.id) {
           return;
         }
 
-        const sortedBySeriesNumber = this.sortBooksBySeriesNumber(seriesBooks);
-        const currentBookIndex = sortedBySeriesNumber.findIndex(b => b.id === book.id);
-
-        if (currentBookIndex === -1) {
+        if (!neighbours) {
           console.warn('[SeriesNav] Current book not found in series');
           return;
         }
 
-        const hasPreviousBook = currentBookIndex > 0;
-        const hasNextBook = currentBookIndex < sortedBySeriesNumber.length - 1;
-
-        this.previousBookInSeries.set(hasPreviousBook ? sortedBySeriesNumber[currentBookIndex - 1] : null);
-        this.nextBookInSeries.set(hasNextBook ? sortedBySeriesNumber[currentBookIndex + 1] : null);
+        this.previousBookInSeries.set(neighbours.previous);
+        this.nextBookInSeries.set(neighbours.next);
 
         this.footerService.setSeriesBooks(this.previousBookInSeries(), this.nextBookInSeries());
         this.footerService.setHasSeries(true);
@@ -2111,12 +2129,16 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
     });
   }
 
-  private sortBooksBySeriesNumber(books: Book[]): Book[] {
-    return books.sort((bookA, bookB) => {
-      const seriesNumberA = bookA.metadata?.seriesNumber ?? Number.MAX_SAFE_INTEGER;
-      const seriesNumberB = bookB.metadata?.seriesNumber ?? Number.MAX_SAFE_INTEGER;
-      return seriesNumberA - seriesNumberB;
-    });
+  private async findSeriesNeighbours(bookId: number, seriesName: string): Promise<{previous: Book | null; next: Book | null} | null> {
+    const seriesIds = await this.queryClient.query(this.bookQuery.ids({facets: {series: [seriesName]}, facetLogic: 'or', sort: SERIES_SORT}));
+    const index = seriesIds.indexOf(bookId);
+    if (index === -1) {
+      return null;
+    }
+
+    const loadBook = (id: number | undefined) => id === undefined ? Promise.resolve(null) : this.bookService.ensureBookDetail(id, false);
+    const [previous, next] = await Promise.all([loadBook(seriesIds[index - 1]), loadBook(seriesIds[index + 1])]);
+    return {previous, next};
   }
 
   getBookDisplayTitle(book: Book | null): string {
@@ -2145,7 +2167,7 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
   }
 
   private enterFullscreen(): void {
-    const elem = this.readerRootRef()?.nativeElement ?? document.documentElement;
+    const elem = document.documentElement;
     if (elem.requestFullscreen) {
       void elem.requestFullscreen().catch(() => undefined);
     }
