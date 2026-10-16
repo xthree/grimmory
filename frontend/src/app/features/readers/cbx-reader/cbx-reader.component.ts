@@ -339,9 +339,9 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
       this.updateNotesState();
     });
 
-    // Capture phase: swallow the click that ends a mouse drag.
+    // Capture phase: swallow the click that ends a mouse drag on the page (not toolbar clicks).
     const suppressDragClick = (event: MouseEvent) => {
-      if (performance.now() < this.suppressClicksUntil) {
+      if (performance.now() < this.suppressClicksUntil && this.isOnPage(event.target)) {
         event.stopPropagation();
         event.preventDefault();
       }
@@ -362,6 +362,7 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
       this.stripMaxWidthPercent();
       this.fitMode();
       this.pageViewMode();
+      this.pageSpread();
       untracked(() => {
         this.pageZoom.reset();
         this.afterNextPaint(() => this.refreshPanCursor());
@@ -1946,7 +1947,7 @@ export class CbxReaderComponent implements OnInit, OnDestroy {
 
   /** Ctrl+wheel, which is also how desktop browsers report trackpad pinch. */
   private readonly onWheel = (event: WheelEvent): void => {
-    if (!event.ctrlKey) return;
+    if (!event.ctrlKey || !this.isOnPage(event.target)) return;
     event.preventDefault();
     this.pageZoom.zoomBy(wheelZoomFactor(event.deltaY, event.deltaMode), toPoint(event));
     this.refreshPanCursor();
